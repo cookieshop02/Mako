@@ -1,0 +1,9 @@
+.env
+token.json
+credentials.json
+meeting_report.md
+__pycache__/
+*.pyc
+.venv/
+venv/
+
