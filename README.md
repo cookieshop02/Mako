@@ -412,5 +412,5 @@ Useful upgrades for the future:
 - user confirmation before creating calendar events
 - better handling for long meetings
 - Docker setup
-- sample demo video for portfolio
+
 
