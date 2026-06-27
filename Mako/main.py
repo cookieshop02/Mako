@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 try:
@@ -55,21 +56,41 @@ def build_parser() -> argparse.ArgumentParser:
         default="base",
         help="Local Whisper model name to use when --audio is provided.",
     )
+    parser.add_argument(
+        "--provider",
+        choices=("anthropic", "groq", "local"),
+        default="anthropic",
+        help="LLM provider for summary/action extraction.",
+    )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Shortcut for --provider local.",
+    )
+    parser.add_argument(
+        "--no-dispatch",
+        action="store_true",
+        help="Skip Google Calendar and Gmail calls. Useful for local testing.",
+    )
     return parser
 
 
 async def async_main() -> None:
     args = build_parser().parse_args()
+    provider = "local" if args.offline else args.provider
     orchestrator = MeetingOrchestrator(
         output_path=args.output,
         recipient_email=args.email,
         google_credentials_path=args.credentials,
         google_token_path=args.token,
         whisper_model=args.whisper_model,
+        provider=provider,
+        no_dispatch=args.no_dispatch,
     )
     await orchestrator.run(audio_path=args.audio, transcript_path=args.transcript)
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(async_main())
-

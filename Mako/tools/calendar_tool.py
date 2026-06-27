@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from googleapiclient.discovery import build
@@ -33,8 +33,8 @@ def create_calendar_event(
     event = {
         "summary": title,
         "description": description,
-        "start": {"dateTime": start.isoformat(), "timeZone": "UTC"},
-        "end": {"dateTime": end.isoformat(), "timeZone": "UTC"},
+        "start": {"dateTime": _google_datetime(start), "timeZone": "UTC"},
+        "end": {"dateTime": _google_datetime(end), "timeZone": "UTC"},
     }
     return service.events().insert(calendarId="primary", body=event).execute()
 
@@ -43,5 +43,9 @@ def _parse_datetime(value: str) -> datetime:
     normalized = value.replace("Z", "+00:00")
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed
-    return parsed.astimezone().replace(tzinfo=None)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _google_datetime(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")

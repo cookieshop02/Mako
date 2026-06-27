@@ -7,14 +7,12 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .agents.action_extractor import ActionExtractor
-    from .agents.dispatcher import Dispatcher
-    from .agents.summarizer import Summarizer
+    from .agents.local_action_extractor import LocalActionExtractor
+    from .agents.local_summarizer import LocalSummarizer
     from .agents.transcriber import Transcriber
 except ImportError:  # Allows `python main.py` from inside meeting_agent/.
-    from agents.action_extractor import ActionExtractor
-    from agents.dispatcher import Dispatcher
-    from agents.summarizer import Summarizer
+    from agents.local_action_extractor import LocalActionExtractor
+    from agents.local_summarizer import LocalSummarizer
     from agents.transcriber import Transcriber
 
 
@@ -29,16 +27,32 @@ class MeetingOrchestrator:
         google_credentials_path: Path,
         google_token_path: Path,
         whisper_model: str = "base",
+        provider: str = "anthropic",
+        no_dispatch: bool = False,
     ) -> None:
         self.output_path = output_path
         self.recipient_email = recipient_email
+        self.provider = provider
+        self.no_dispatch = no_dispatch
         self.transcriber = Transcriber(model_name=whisper_model)
-        self.summarizer = Summarizer()
-        self.action_extractor = ActionExtractor()
-        self.dispatcher = Dispatcher(
-            credentials_path=google_credentials_path,
-            token_path=google_token_path,
-        )
+        if provider == "local":
+            self.summarizer = LocalSummarizer()
+            self.action_extractor = LocalActionExtractor()
+        elif provider == "groq":
+            self.summarizer = self._groq_summarizer()
+            self.action_extractor = self._groq_action_extractor()
+        elif provider == "anthropic":
+            self.summarizer = self._anthropic_summarizer()
+            self.action_extractor = self._anthropic_action_extractor()
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+
+        self.dispatcher = None
+        if not no_dispatch:
+            self.dispatcher = self._dispatcher(
+                credentials_path=google_credentials_path,
+                token_path=google_token_path,
+            )
 
     async def run(
         self,
@@ -49,19 +63,37 @@ class MeetingOrchestrator:
         print("[1/4] Transcribing or loading transcript...")
         transcript = await self._get_transcript(audio_path, transcript_path)
 
-        print("[2/4] Summarizing meeting with Claude...")
+        summarizer_name = {
+            "anthropic": "Claude",
+            "groq": "Groq",
+            "local": "local rules",
+        }[self.provider]
+        print(f"[2/4] Summarizing meeting with {summarizer_name}...")
         summary = await self.summarizer.run(transcript)
 
-        print("[3/4] Extracting action items with Claude...")
+        print(f"[3/4] Extracting action items with {summarizer_name}...")
         action_items = await self.action_extractor.run(transcript)
 
-        print("[4/4] Dispatching calendar and email actions...")
-        dispatch_results = await self.dispatcher.run(
-            action_items=action_items,
-            summary=summary,
-            transcript=transcript,
-            recipient_email=self.recipient_email,
-        )
+        if self.no_dispatch:
+            print("[4/4] Skipping dispatch (--no-dispatch enabled)...")
+            dispatch_results = {
+                "calendar_events": [],
+                "email": {
+                    "to": self.recipient_email,
+                    "success": False,
+                    "error": "Skipped because --no-dispatch was enabled.",
+                },
+            }
+        else:
+            print("[4/4] Dispatching calendar and email actions...")
+            if self.dispatcher is None:
+                raise RuntimeError("Dispatcher was not initialized.")
+            dispatch_results = await self.dispatcher.run(
+                action_items=action_items,
+                summary=summary,
+                transcript=transcript,
+                recipient_email=self.recipient_email,
+            )
 
         report = self._render_report(
             transcript=transcript,
@@ -159,3 +191,37 @@ class MeetingOrchestrator:
             return ""
         return str(value).replace("|", "\\|").replace("\n", " ")
 
+    def _anthropic_summarizer(self) -> Any:
+        try:
+            from .agents.summarizer import Summarizer
+        except ImportError:
+            from agents.summarizer import Summarizer
+        return Summarizer()
+
+    def _anthropic_action_extractor(self) -> Any:
+        try:
+            from .agents.action_extractor import ActionExtractor
+        except ImportError:
+            from agents.action_extractor import ActionExtractor
+        return ActionExtractor()
+
+    def _groq_summarizer(self) -> Any:
+        try:
+            from .agents.groq_summarizer import GroqSummarizer
+        except ImportError:
+            from agents.groq_summarizer import GroqSummarizer
+        return GroqSummarizer()
+
+    def _groq_action_extractor(self) -> Any:
+        try:
+            from .agents.groq_action_extractor import GroqActionExtractor
+        except ImportError:
+            from agents.groq_action_extractor import GroqActionExtractor
+        return GroqActionExtractor()
+
+    def _dispatcher(self, *, credentials_path: Path, token_path: Path) -> Any:
+        try:
+            from .agents.dispatcher import Dispatcher
+        except ImportError:
+            from agents.dispatcher import Dispatcher
+        return Dispatcher(credentials_path=credentials_path, token_path=token_path)
