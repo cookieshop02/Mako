@@ -22,25 +22,25 @@ class ActionExtractor:
 
     async def run(self, transcript: str) -> list[dict[str, Any]]:
         prompt = f"""
-You are an action item extraction agent.
-
-Return JSON only. Do not include markdown, explanations, or code fences.
-
-Return an array. Each item must match this schema:
-{{
-  "task_description": "string",
-  "assigned_person": "string or null",
-  "due_date": "ISO-8601 date/datetime string or null",
-  "priority": "High | Medium | Low"
-}}
-
-Infer due dates and priority only when reasonable from the transcript.
-Use null for missing assigned people or due dates.
-If no action items are present, return [].
-
-Transcript:
-{transcript}
-""".strip()
+        You are an action item extraction agent.
+        
+        Return JSON only. Do not include markdown, explanations, or code fences.
+        
+        Return an array. Each item must match this schema:
+        {{
+          "task_description": "string",
+          "assigned_person": "string or null",
+          "due_date": "ISO-8601 date/datetime string or null",
+          "priority": "High | Medium | Low"
+        }}
+        
+        Infer due dates and priority only when reasonable from the transcript.
+        Use null for missing assigned people or due dates.
+        If no action items are present, return [].
+        
+        Transcript:
+        {transcript}
+        """.strip()
 
         response = await self.client.messages.create(
             model=self.model,
